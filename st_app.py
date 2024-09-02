@@ -1,7 +1,7 @@
 
-# 26082024
-# aplicação streamit que subistitui st_assembly2
-# ajuste do Stremlit - incluido botão de requisição para analise pelos prompts após a transcrição
+# 02/09/2024
+# incluido gráfico de analise de sentimento
+# 
 
 
 import os
@@ -14,7 +14,9 @@ from fpdf import FPDF
 import assemblyai as aai
 from pydub.utils import which
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
+import matplotlib.pyplot as plt
 import requests
+import json
 
 # Configuração das chaves de API
 api_key_groq = st.secrets["api_keys"]["api_key3"]
@@ -100,8 +102,47 @@ def make_api_request(keyword, transcription):
     response = requests.post("http://127.0.0.1:5000/process", json=payload)
     return response.json()
 
+def plot_sentiments(data, title, key):
+        labels = list(data.keys())
+        values = list(data.values())
+        
+        plt.figure(figsize=(8, 4))
+        plt.bar(labels, values, color='skyblue')
+        plt.xlabel('Sentimentos')
+        plt.ylabel('Intensidade')
+        plt.title(title)
+        #st.pyplot(plt)
+        # Salvar o gráfico como imagem
+        img_path = os.path.join(f"{key}_sentiment_graph.png")
+        plt.savefig(img_path)
+
+        # Armazenar a imagem no st.session_state
+        st.session_state[key] = img_path
+
+        # Exibir o gráfico na interface
+        st.pyplot(plt)
+        plt.close()
+
+
+
 def main():
     st.title("💬 Chat - Transcription audio 🎙🔉")
+
+    for message in st.session_state.chat:
+        role = "user" if message["role"] == "user" else "assistant"
+        with st.chat_message(role):
+            st.markdown(message['text'])
+
+    if "cliente_graph" not in st.session_state:
+        st.session_state['cliente_graph'] = None
+    if "atendente_graph" not in st.session_state:
+        st.session_state['atendente_graph'] = None
+
+    if st.session_state['cliente_graph']:
+        st.image(st.session_state['cliente_graph'], caption="Gráfico de Sentimentos - Cliente")
+    if st.session_state['atendente_graph']:
+        st.image(st.session_state['atendente_graph'], caption="Gráfico de Sentimentos - Atendente")
+ 
 
     if "chat" not in st.session_state:
         st.session_state.chat = []
@@ -125,29 +166,60 @@ def main():
         st.button("NOVO CHAT", on_click=limpar_chat)
         st.sidebar.divider()
         arquivo_carregado = st.sidebar.file_uploader("Carregar arquivo de áudio (GSM ou MP3)")
+       
 
         #botoes de download sidebar
-        if st.session_state.transcricao_feita:
+    if st.session_state.transcricao_feita:
             
-            with open("transcription.pdf", "rb") as f:
-                st.download_button(
-                    label=f"Download PDF ({st.session_state.pdf_downloads})",
-                    data=f,
-                    file_name="transcription.pdf",
-                    mime="application/pdf"
-                )
+        with open("transcription.pdf", "rb") as f:
+            st.sidebar.download_button(
+                label=f"Download PDF ({st.session_state.pdf_downloads})",
+                data=f,
+                file_name="transcription.pdf",
+                mime="application/pdf"
+            )
 
-            with open("transcription.docx", "rb") as f:
-                st.download_button(
-                    label=f"Download DOCX ({st.session_state.docx_downloads})",
-                    data=f,
-                    file_name="transcription.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
+        with open("transcription.docx", "rb") as f:
+            st.sidebar.download_button(
+                label=f"Download DOCX ({st.session_state.docx_downloads})",
+                data=f,
+                file_name="transcription.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
 
             # Entrada para o keyword e botão para enviar a transcrição
-            keyword = st.text_input("Keyword para API", "aprovar")
-            if st.button("Enviar para Análise"):
+        keyword = st.sidebar.text_input("Keyword para API", "aprovar")
+        if st.sidebar.button("Enviar para Análise"):             
+
+            if keyword =="sentimento":
+                response = make_api_request(keyword, st.session_state.transcricao)
+                dados = response['result'].split("```")[1]
+                dados_final = json.loads(dados)
+
+                # plotar gráfico cliente    
+                st.header("Sentimentos - Cliente")
+                plot_sentiments(dados_final["cliente"]["sentimentos"], f"Classe: {dados_final['cliente']['classe']}", key="cliente_graph")
+
+                # Exibir principais motivos.
+                st.subheader("Principais Motivos - Cliente")
+                motivo_cli = dados_final["cliente"]["razao_possivel"]
+
+                for i, motivo_c in enumerate(motivo_cli, start=1):
+                    st.markdown(f'**Motivo {i}**: {motivo_c}')
+
+                # plotar gráfico Atendente.  
+                st.header("Sentimentos - Atendente")
+                plot_sentiments(dados_final["atendente"]["sentimentos"], f"Classe: {dados_final['atendente']['classe']}", key="atendente_graph")
+
+
+                # Exibir principais motivos.
+                st.subheader("Principais Motivos - Atendente")
+                motivo_aten= dados_final["atendente"]["razao_possivel"]   
+
+                for i, motivo_a in enumerate(motivo_aten, start=1):
+                    st.write(f'**Motivo {i}**: {motivo_a}')                                                                   
+                                
+            else:    
                 response = make_api_request(keyword, st.session_state.transcricao)
                 resp_api = response.get('result','')
                 st.markdown(f"### Resposta da API: \n```{resp_api}```")
@@ -156,14 +228,9 @@ def main():
 
 
 
-
 #inicio do chatbot --------------------------------------------------------------------
 
-    for message in st.session_state.chat:
-        role = "user" if message["role"] == "user" else "assistant"
-        with st.chat_message(role):
-            st.markdown(message['text'])
-
+    
     if prompt := st.chat_input("Como posso ajudar?"):
         st.session_state.chat.append({"role": "user", "text": prompt})
         st.session_state.history.append({"role": "user", "content": prompt})
@@ -204,7 +271,7 @@ def main():
             
 
 # ------------------- AUDIO -----------------------------------------
-    #arquivo_carregado = st.sidebar.file_uploader("Carregar arquivo de áudio (GSM ou MP3)")
+    
 
     if arquivo_carregado:
         st.sidebar.markdown("# PLAY AUDIO 🔉 ")
@@ -230,10 +297,13 @@ def main():
         st.sidebar.audio(temp_filename, format="audio/mpeg", loop=False)
 
         if not st.session_state.transcricao_feita and st.sidebar.button("Fazer transcrição"):
+
             st.write("Realizando o tratamento do áudio...")
+
             st.session_state.file_path = temp_filename
             transcription = transcribe_audio(st.session_state.file_path)
             #st.session_state.transcricao_feita = True
+
             st.session_state.chat.append({"role": "system", "text": f"Transcrição: \n {transcription}"})
             st.session_state.history.append({"role": "system", "content": f"Transcrição: \n {transcription}"})
             #st.session_state.transcricao.append(f'{transcription}')
@@ -243,7 +313,7 @@ def main():
 
             st.write("Processando transcrição ...")
 
-            prompt4 = f''' {transcription} retorne uma breve analise da transcrição. '''
+            #prompt4 = f''' {transcription} retorne uma breve analise da transcrição. '''
             prompt5 = f''' {transcription} mostre a transcrição como se fosse uma timeline informando o speaker e o texto não apresente o tempo. '''
 
             
@@ -264,7 +334,7 @@ def main():
                     model="llama3-70b-8192"
                 ).choices[0].message.content
 
-    # apresentação na tela 
+        # apresentação na tela 
                 with st.chat_message("assistente"):
                     st.write("Resposta Groq")
                     st.markdown(response_final)
@@ -280,30 +350,34 @@ def main():
             st.session_state.pdf_downloads += 1
             st.session_state.docx_downloads += 1
 
-            # Mostrar os botões de download após a transcrição
-            with st.sidebar:
-                with open("transcription.pdf", "rb") as f:
-                    st.download_button(
-                        label=f"Download PDF ({st.session_state.pdf_downloads})",
-                        data=f,
-                        file_name="transcription.pdf",
-                        mime="application/pdf"
-                    )
+                # Mostrar os botões de download após a transcrição
+                
+            with open("transcription.pdf", "rb") as f:
+                st.sidebar.download_button(
+                    label=f"Download PDF ({st.session_state.pdf_downloads})",
+                    data=f,
+                    file_name="transcription.pdf",
+                    mime="application/pdf"
+                )
 
-                with open("transcription.docx", "rb") as f:
-                    st.download_button(
-                        label=f"Download DOCX ({st.session_state.docx_downloads})",
-                        data=f,
-                        file_name="transcription.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    )
-                keyword = st.text_input("Keyword para API", "aprovar")
-                if st.button("Enviar para Análise"):
-                    response = make_api_request(keyword, st.session_state.transcricao)
-                    resp_api = response.get('result','')
-                    st.markdown(f"### Resposta da API: \n```{resp_api}```")
-                    #st.code(response, language='json')
-                    st.session_state.chat.append({"role": "assistant", "text": f"**Resposta da API**:\n\n {resp_api}"})
+            with open("transcription.docx", "rb") as f:
+                st.sidebar.download_button(
+                    label=f"Download DOCX ({st.session_state.docx_downloads})",
+                    data=f,
+                    file_name="transcription.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+            keyword = st.text_input("Keyword para API", "aprovar")
+            if st.button("Enviar para Análise"):
+                response = make_api_request(keyword, st.session_state.transcricao)
+                resp_api = response.get('result','')
+                st.markdown(f"### Resposta da API: \n```{resp_api}```")
+                #st.code(response, language='json')
+                st.session_state.chat.append({"role": "assistant", "text": f"**Resposta da API**:\n\n {resp_api}"})
+            
+                
+                    
+                    
 
             
     
