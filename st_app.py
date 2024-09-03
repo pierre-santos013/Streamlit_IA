@@ -111,10 +111,14 @@ def plot_sentiments(data, title, key):
         plt.xlabel('Sentimentos')
         plt.ylabel('Intensidade')
         plt.title(title)
-        #st.pyplot(plt)
+        
         # Salvar o gráfico como imagem
         img_path = os.path.join(f"{key}_sentiment_graph.png")
         plt.savefig(img_path)
+
+        # Verificar se o arquivo já existe e remover se existir
+        #if os.path.exists(img_path):
+         #   os.remove(img_path)
 
         # Armazenar a imagem no st.session_state
         st.session_state[key] = img_path
@@ -127,6 +131,23 @@ def plot_sentiments(data, title, key):
 
 def main():
     st.title("💬 Chat - Transcription audio 🎙🔉")
+
+    if "chat" not in st.session_state:
+        st.session_state.chat = []
+        st.session_state.history = []
+        st.session_state.transcricao = []
+
+    if "transcricao_feita" not in st.session_state:
+        st.session_state.transcricao_feita = False
+       
+    if "transcricao" not in st.session_state:
+        st.session_state.transcricao = ""
+
+    if "pdf_downloads" not in st.session_state:
+        st.session_state.pdf_downloads = 0
+    if "docx_downloads" not in st.session_state:
+        st.session_state.docx_downloads = 0    
+
 
     for message in st.session_state.chat:
         role = "user" if message["role"] == "user" else "assistant"
@@ -144,21 +165,9 @@ def main():
         st.image(st.session_state['atendente_graph'], caption="Gráfico de Sentimentos - Atendente")
  
 
-    if "chat" not in st.session_state:
-        st.session_state.chat = []
-        st.session_state.history = []
-        st.session_state.transcricao = []
+    
 
-    if "transcricao_feita" not in st.session_state:
-        st.session_state.transcricao_feita = False
-       
-    if "transcricao" not in st.session_state:
-        st.session_state.transcricao = ""
-
-    if "pdf_downloads" not in st.session_state:
-        st.session_state.pdf_downloads = 0
-    if "docx_downloads" not in st.session_state:
-        st.session_state.docx_downloads = 0
+    
 
 
 #sidebar ----------------------------------------------------------------------
@@ -196,33 +205,35 @@ def main():
                 dados = response['result'].split("```")[1]
                 dados_final = json.loads(dados)
 
+                with st.container(border=True):
                 # plotar gráfico cliente    
-                st.header("Sentimentos - Cliente")
-                plot_sentiments(dados_final["cliente"]["sentimentos"], f"Classe: {dados_final['cliente']['classe']}", key="cliente_graph")
+                    st.header("Sentimentos - Cliente")
+                    plot_sentiments(dados_final["cliente"]["sentimentos"], f"Classe: {dados_final['cliente']['classe']}", key="cliente_graph")
 
-                # Exibir principais motivos.
-                st.subheader("Principais Motivos - Cliente")
-                motivo_cli = dados_final["cliente"]["razao_possivel"]
+                    # Exibir principais motivos.
+                    st.subheader("Principais Motivos - Cliente")
+                    motivo_cli = dados_final["cliente"]["razao_possivel"]
 
-                for i, motivo_c in enumerate(motivo_cli, start=1):
-                    st.markdown(f'**Motivo {i}**: {motivo_c}')
+                    for i, motivo_c in enumerate(motivo_cli, start=1):
+                        st.markdown(f'**Motivo {i}**: {motivo_c}')
 
-                # plotar gráfico Atendente.  
-                st.header("Sentimentos - Atendente")
-                plot_sentiments(dados_final["atendente"]["sentimentos"], f"Classe: {dados_final['atendente']['classe']}", key="atendente_graph")
+                with st.container(border=True):    
+                    # plotar gráfico Atendente.  
+                    st.header("Sentimentos - Atendente")
+                    plot_sentiments(dados_final["atendente"]["sentimentos"], f"Classe: {dados_final['atendente']['classe']}", key="atendente_graph")
 
 
-                # Exibir principais motivos.
-                st.subheader("Principais Motivos - Atendente")
-                motivo_aten= dados_final["atendente"]["razao_possivel"]   
-
-                for i, motivo_a in enumerate(motivo_aten, start=1):
-                    st.write(f'**Motivo {i}**: {motivo_a}')                                                                   
+                    # Exibir principais motivos.
+                    st.subheader("Principais Motivos - Atendente")
+                    motivo_aten= dados_final["atendente"]["razao_possivel"]   
+                    st.sidebar.code(motivo_aten)    
+                    for i, motivo_a in enumerate(motivo_aten, start=1):
+                        st.write(f'**Motivo {i}**: {motivo_a}')                                                                   
                                 
             else:    
                 response = make_api_request(keyword, st.session_state.transcricao)
                 resp_api = response.get('result','')
-                st.markdown(f"### Resposta da API: \n```{resp_api}```")
+                st.write(f"### Resposta da API: \n{resp_api}")
                 #st.code(response, language='json')
                 st.session_state.chat.append({"role": "assistant", "text": f"**Resposta da API**:\n\n {resp_api}"})
 
@@ -367,11 +378,11 @@ def main():
                     file_name="transcription.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
-            keyword = st.text_input("Keyword para API", "aprovar")
-            if st.button("Enviar para Análise"):
+            keyword = st.sidebar.text_input("Keyword para API", "aprovar")
+            if st.sidebar.button("Enviar para Análise"):
                 response = make_api_request(keyword, st.session_state.transcricao)
                 resp_api = response.get('result','')
-                st.markdown(f"### Resposta da API: \n```{resp_api}```")
+                st.write(f"### Resposta da API: \n{resp_api}")
                 #st.code(response, language='json')
                 st.session_state.chat.append({"role": "assistant", "text": f"**Resposta da API**:\n\n {resp_api}"})
             
