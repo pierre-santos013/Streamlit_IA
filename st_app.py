@@ -1,9 +1,10 @@
 
-# 02/09/2024
-# incluido gráfico de analise de sentimento
-# 
+# 04/09/2024
+# ajuste do timesteps mostrado na transcrição, update no prompt de análise do contato após a transcrição. 
 
 
+
+import datetime
 import os
 import streamlit as st
 from pydub import AudioSegment
@@ -51,11 +52,16 @@ def limpar_chat():
     st.session_state.chat = []
     st.session_state.history = []
     st.session_state.transcricao_feita = False
+    st.session_state['atendente_graph'] = []
+    st.session_state['cliente_graph'] = []
     
     if os.path.exists("audio_temp.flac"):
         os.remove("audio_temp.flac")
         os.remove("transcription.docx")
         os.remove("transcription.pdf")
+
+def convert_milliseconds(ms):
+    return str(datetime.timedelta(milliseconds=ms)).split('.')[0]
 
 
 def transcribe_audio(filepath):
@@ -64,10 +70,12 @@ def transcribe_audio(filepath):
     if transcript.status == aai.TranscriptStatus.error:
         response = transcript.error
     else:
-        #response = transcript.text
         response = ""
         for utterance in transcript.utterances:
-            response += f"Speaker {utterance.speaker}: {utterance.text}\n"
+            #time_str = convert_milliseconds(utterance["start"])
+            time_str = convert_milliseconds(utterance.start)
+
+            response += f"[{time_str}]- Speaker {utterance.speaker}: {utterance.text}\n\n"
 
     return response
 
@@ -324,8 +332,16 @@ def main():
 
             st.write("Processando transcrição ...")
 
-            #prompt4 = f''' {transcription} retorne uma breve analise da transcrição. '''
-            prompt5 = f''' {transcription} mostre a transcrição como se fosse uma timeline informando o speaker e o texto não apresente o tempo. '''
+            #prompt4 = f''' {transcription} mostre a transcrição como se fosse uma timeline informando o speaker e o texto não apresente o tempo. '''
+            prompt5 = f''' <{transcription}> faça uma análise breve da transcrição, e sumarize sobre os pontos:
+
+                                                Objetividade e Clareza da Comunicação,
+                                                Empatia e Postura Profissional,
+                                                Resolução do Problema,
+                                                tecnicas de PNL e escuta ativa,
+                                                Pontos Fortes e Áreas de Melhoria,
+
+                        '''
 
             
             try:
@@ -383,7 +399,7 @@ def main():
                 response = make_api_request(keyword, st.session_state.transcricao)
                 resp_api = response.get('result','')
                 st.write(f"### Resposta da API: \n{resp_api}")
-                #st.code(response, language='json')
+                
                 st.session_state.chat.append({"role": "assistant", "text": f"**Resposta da API**:\n\n {resp_api}"})
             
                 
