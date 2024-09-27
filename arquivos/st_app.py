@@ -1,9 +1,8 @@
 
-# 02/09/2024
-# incluido gráfico de analise de sentimento
-# 
+# 04/09/2024
+# ajuste do timesteps mostrado na transcrição, update no prompt de análise do contato após a transcrição. 
 
-
+import datetime
 import os
 import streamlit as st
 from pydub import AudioSegment
@@ -33,30 +32,34 @@ generation_config = {
     "max_output_tokens": 8192,
     "response_mime_type": "text/plain",
 }
-
-
 safety_settings = {
     HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
     HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE
 }
-
-
 model_g = genai.GenerativeModel(model_name='models/gemini-1.5-flash-latest', generation_config=generation_config, safety_settings=safety_settings)
 
 #config = aai.TranscriptionConfig(speech_model=aai.SpeechModel.best, language_code="pt")
 config = aai.TranscriptionConfig(speech_model=aai.SpeechModel.best, speaker_labels=True, language_code="pt")
 
+
+
+# ------ Funções auxiliares -------
+
 def limpar_chat():
     st.session_state.chat = []
     st.session_state.history = []
     st.session_state.transcricao_feita = False
+    st.session_state['atendente_graph'] = []
+    st.session_state['cliente_graph'] = []
     
     if os.path.exists("audio_temp.flac"):
         os.remove("audio_temp.flac")
-        os.remove("transcription.docx")
-        os.remove("transcription.pdf")
+        #os.remove("transcription.docx")
+        #os.remove("transcription.pdf")
 
+def convert_milliseconds(ms):
+    return str(datetime.timedelta(milliseconds=ms)).split('.')[0]
 
 def transcribe_audio(filepath):
     transcriber = aai.Transcriber()
@@ -64,10 +67,12 @@ def transcribe_audio(filepath):
     if transcript.status == aai.TranscriptStatus.error:
         response = transcript.error
     else:
-        #response = transcript.text
         response = ""
         for utterance in transcript.utterances:
-            response += f"Speaker {utterance.speaker}: {utterance.text}\n"
+            #time_str = convert_milliseconds(utterance["start"])
+            time_str = convert_milliseconds(utterance.start)
+
+            response += f"[{time_str}]- Speaker {utterance.speaker}: {utterance.text}\n\n"
 
     return response
 
@@ -99,7 +104,7 @@ def make_api_request(keyword, transcription):
         "keyword": keyword,
         "text": transcription,
     }
-    response = requests.post("http://127.0.0.1:5000/process", json=payload)
+    response = requests.post("http://127.0.0.1:8000/process", json=payload)
     return response.json()
 
 def plot_sentiments(data, title, key):
@@ -136,6 +141,7 @@ def main():
         st.session_state.chat = []
         st.session_state.history = []
         st.session_state.transcricao = []
+        
 
     if "transcricao_feita" not in st.session_state:
         st.session_state.transcricao_feita = False
@@ -165,11 +171,6 @@ def main():
         st.image(st.session_state['atendente_graph'], caption="Gráfico de Sentimentos - Atendente")
  
 
-    
-
-    
-
-
 #sidebar ----------------------------------------------------------------------
     with st.sidebar:
         st.button("NOVO CHAT", on_click=limpar_chat)
@@ -196,36 +197,64 @@ def main():
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
 
+
+
             # Entrada para o keyword e botão para enviar a transcrição
-        keyword = st.sidebar.text_input("Keyword para API", "aprovar")
+        # keyword = st.sidebar.text_input("Keyword para API", "aprovar")
+        keyword = st.sidebar.selectbox ('selecione a opção para análise',("aprovar", "resumo","sentimento", "motivo"))
         if st.sidebar.button("Enviar para Análise"):             
 
             if keyword =="sentimento":
                 response = make_api_request(keyword, st.session_state.transcricao)
-                dados = response['result'].split("```")[1]
-                dados_final = json.loads(dados)
+    # print response
+                st.write(f' RESPONSE: {response}', language= json)
+            
+                dados = response['result'].split("```")[1]  # retorna string
+    # print dados
+                st.write(f'{dados}', language= json)
+
+                dados2 = json.loads(dados)  # dict
+                st.write(dados, language= json)
+    # Dados cliente            
+                cliente = dados2['role_cliente']  #string
+                classe_cliente = dados2['classe_cliente']  #string
+                sentimentos_cliente = dados2["sent_cliente"]
+                motivos_cliente = dados2["razoes_possiveis_cliente"]
+    #Dados Atendente
+                atendente = dados2['role_atendente']  #string
+                classe_atendente = dados2['classe_atendente']  #string
+                sentimentos_atendente = dados2["sent_atendente"]
+                motivos_atendente = dados2["razoes_possiveis_atendente"]
+
+                st.write(f"{cliente} - {type(cliente)}")
+                st.write(f"{classe_cliente} -  {type(classe_cliente)}")
+                st.write(f"{sentimentos_cliente} -  {type(sentimentos_cliente)}")  
+                st.write(f"{motivos_cliente} - {type(motivos_cliente)} ")
+     
+               
+              
 
                 with st.container(border=True):
-                # plotar gráfico cliente    
+        # plotar gráfico cliente    
                     st.header("Sentimentos - Cliente")
-                    plot_sentiments(dados_final["cliente"]["sentimentos"], f"Classe: {dados_final['cliente']['classe']}", key="cliente_graph")
+                    plot_sentiments(sentimentos_cliente, f"Classe: {classe_cliente}", key="cliente_graph")
 
-                    # Exibir principais motivos.
+        # Exibir principais motivos.
                     st.subheader("Principais Motivos - Cliente")
-                    motivo_cli = dados_final["cliente"]["razao_possivel"]
+                    motivo_cli = motivos_cliente
 
                     for i, motivo_c in enumerate(motivo_cli, start=1):
                         st.markdown(f'**Motivo {i}**: {motivo_c}')
 
                 with st.container(border=True):    
-                    # plotar gráfico Atendente.  
+  #                  # plotar gráfico Atendente.  
                     st.header("Sentimentos - Atendente")
-                    plot_sentiments(dados_final["atendente"]["sentimentos"], f"Classe: {dados_final['atendente']['classe']}", key="atendente_graph")
+                    plot_sentiments(sentimentos_atendente, f"Classe: {classe_atendente}", key="atendente_graph")
 
 
-                    # Exibir principais motivos.
+   #                 # Exibir principais motivos.
                     st.subheader("Principais Motivos - Atendente")
-                    motivo_aten= dados_final["atendente"]["razao_possivel"]   
+                    motivo_aten= motivos_atendente
                     st.sidebar.code(motivo_aten)    
                     for i, motivo_a in enumerate(motivo_aten, start=1):
                         st.write(f'**Motivo {i}**: {motivo_a}')                                                                   
@@ -309,11 +338,12 @@ def main():
 
         if not st.session_state.transcricao_feita and st.sidebar.button("Fazer transcrição"):
 
-            st.write("Realizando o tratamento do áudio...")
+            with st.spinner("Realizando o tratamento do áudio..."):   
+                #st.write("Realizando o tratamento do áudio...")
 
-            st.session_state.file_path = temp_filename
-            transcription = transcribe_audio(st.session_state.file_path)
-            #st.session_state.transcricao_feita = True
+                st.session_state.file_path = temp_filename
+                transcription = transcribe_audio(st.session_state.file_path)
+                #st.session_state.transcricao_feita = True
 
             st.session_state.chat.append({"role": "system", "text": f"Transcrição: \n {transcription}"})
             st.session_state.history.append({"role": "system", "content": f"Transcrição: \n {transcription}"})
@@ -324,8 +354,16 @@ def main():
 
             st.write("Processando transcrição ...")
 
-            #prompt4 = f''' {transcription} retorne uma breve analise da transcrição. '''
-            prompt5 = f''' {transcription} mostre a transcrição como se fosse uma timeline informando o speaker e o texto não apresente o tempo. '''
+            #prompt4 = f''' {transcription} mostre a transcrição como se fosse uma timeline informando o speaker e o texto não apresente o tempo. '''
+            prompt5 = f''' <{transcription}> faça uma análise breve da transcrição, e sumarize sobre os pontos:
+
+                                                Objetividade e Clareza da Comunicação,
+                                                Empatia e Postura Profissional,
+                                                Resolução do Problema,
+                                                tecnicas de PNL e escuta ativa,
+                                                Pontos Fortes e Áreas de Melhoria,
+
+                        '''
 
             
             try:
@@ -383,16 +421,11 @@ def main():
                 response = make_api_request(keyword, st.session_state.transcricao)
                 resp_api = response.get('result','')
                 st.write(f"### Resposta da API: \n{resp_api}")
-                #st.code(response, language='json')
+                
                 st.session_state.chat.append({"role": "assistant", "text": f"**Resposta da API**:\n\n {resp_api}"})
             
                 
-                    
-                    
-
-            
-    
-    #st.sidebar.write("realize a interação")        
+     
 
 if __name__ == "__main__":
     main()

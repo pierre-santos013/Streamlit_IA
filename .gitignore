@@ -1,0 +1,6 @@
+.venv
+.streamlit
+arquivos\
+audio_temp.flac
+transcription.docx
+transcription.py
