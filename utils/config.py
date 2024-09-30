@@ -33,8 +33,8 @@ config = aai.TranscriptionConfig(speech_model=aai.SpeechModel.best, speaker_labe
 connection = pymysql.connect(
     host='localhost',
     user='root',
-    password='root123',
-    database='basedados'
+    password='senhaBD',
+    database='basedadoBD'
 )
 
 cursor = connection.cursor()
