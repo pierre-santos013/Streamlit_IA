@@ -71,7 +71,7 @@ def search_similar_documents(query, top_k=5):
     return similar_documents
 
 llm = Groq(
-    api_key = "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",
+    api_key = "APIKEY",
 )
 #gerador
 
